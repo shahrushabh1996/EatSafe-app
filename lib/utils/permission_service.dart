@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Service class for handling permission-related functionality
 class PermissionService {
   /// Function to request camera permissions
   static Future<bool> requestCameraPermission(BuildContext context) async {
+    // Skip permission check on web
+    if (kIsWeb) {
+      return true;
+    }
+    
     var status = await Permission.camera.status;
     
     if (status == PermissionStatus.denied) {
@@ -45,23 +51,44 @@ class PermissionService {
 
   /// Function to request storage permissions
   static Future<bool> requestStoragePermission(BuildContext context) async {
+    // Skip permission check on web
+    if (kIsWeb) {
+      return true;
+    }
+    
     var status;
     
     // Handle permissions differently based on platform
-    if (Platform.isAndroid) {
-      // Try photos permission first (for newer Android versions)
-      status = await Permission.photos.request();
+    if (!kIsWeb) {
+      // For non-web platforms
+      bool isAndroid = false;
+      bool isIOS = false;
       
-      // If photos permission didn't work, fall back to storage
-      if (status != PermissionStatus.granted && status != PermissionStatus.permanentlyDenied) {
+      try {
+        isAndroid = io.Platform.isAndroid;
+        isIOS = io.Platform.isIOS;
+      } catch (e) {
+        print('Error checking platform: $e');
+      }
+      
+      if (isAndroid) {
+        // Try photos permission first (for newer Android versions)
+        status = await Permission.photos.request();
+        
+        // If photos permission didn't work, fall back to storage
+        if (status != PermissionStatus.granted && status != PermissionStatus.permanentlyDenied) {
+          status = await Permission.storage.request();
+        }
+      } else if (isIOS) {
+        // iOS photo library permission
+        status = await Permission.photos.request();
+      } else {
+        // Fallback for other platforms
         status = await Permission.storage.request();
       }
-    } else if (Platform.isIOS) {
-      // iOS photo library permission
-      status = await Permission.photos.request();
     } else {
-      // Fallback for other platforms
-      status = await Permission.storage.request();
+      // For web, permissions are handled differently
+      status = PermissionStatus.granted;
     }
     
     if (status == PermissionStatus.permanentlyDenied) {

@@ -18,11 +18,23 @@ class DialogService {
               children: <Widget>[
                 const Text('Select the source for your image'),
                 const SizedBox(height: 20),
+                // Only show camera option if not on web or explicitly note the limitations
+                if (!kIsWeb)
                 ListTile(
                   leading: Icon(Icons.camera_alt, color: Theme.of(context).colorScheme.primary),
                   title: const Text('Camera'),
                   onTap: () {
                     print('DialogService: Camera option selected');
+                    Navigator.of(context).pop();
+                    onSourceSelected(ImageSource.camera);
+                  },
+                ),
+                if (kIsWeb)
+                ListTile(
+                  leading: Icon(Icons.camera_alt, color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Camera (Limited support in browsers)'),
+                  onTap: () {
+                    print('DialogService: Web Camera option selected');
                     Navigator.of(context).pop();
                     onSourceSelected(ImageSource.camera);
                   },
@@ -55,7 +67,7 @@ class DialogService {
           content: const Text(
             'The image upload feature may have limitations in the web version due to browser security restrictions.\n\n'
             'For the best experience, we recommend using the mobile app. '
-            'You can still try using this feature, but if you encounter issues, please use the URL input instead.'
+            'You can still try using this feature, but gallery upload is more reliable than camera in web browsers.'
           ),
           actions: [
             TextButton(

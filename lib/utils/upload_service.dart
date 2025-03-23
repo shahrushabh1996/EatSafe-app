@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:io';
+import 'dart:io' as io;
+import 'dart:html' as html;
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math'; // For min function
@@ -9,13 +10,14 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/nutritional_data.dart';
 import '../screens/nutritional_insights_screen.dart';
 import 'dialog_service.dart';
+import 'image_service.dart'; // Import the image_service.dart which now has our File wrapper class
 
 /// Service class for handling image uploads and API responses
 class UploadService {
   /// Function to upload image to server
   static Future<void> uploadImage(File imageFile, BuildContext context) async {
     print('======= UPLOAD PROCESS STARTED =======');
-    print('Platform: Android=${Platform.isAndroid}, iOS=${Platform.isIOS}, Web=$kIsWeb');
+    print('Platform: Web=$kIsWeb');
     print('Image path: ${imageFile.path}');
     print('Image size: ${await imageFile.length()} bytes');
     print('API endpoint being used: http://65.1.134.235:3003');
@@ -52,9 +54,9 @@ class UploadService {
     }
     
     try {
-      // ANDROID SPECIFIC IMPLEMENTATION
-      if (Platform.isAndroid) {
-        print('Using direct Android implementation');
+      // For mobile platforms
+      if (!kIsWeb) {
+        print('Using mobile implementation');
 
         // Make sure a loading dialog is showing
         bool isDialogShowing = false;
@@ -94,11 +96,11 @@ class UploadService {
           final multipartFile = http.MultipartFile.fromBytes(
             'file', 
             bytes,
-            filename: 'android_image.jpg',
+            filename: 'mobile_image.jpg',
           );
           request.files.add(multipartFile);
           
-          print('Sending Android MultipartRequest to $uri');
+          print('Sending mobile MultipartRequest to $uri');
           
           // Make the API call with a timeout
           final response = await request.send().timeout(
@@ -106,24 +108,24 @@ class UploadService {
             onTimeout: () => throw TimeoutException('Connection timed out'),
           );
           
-          print('Android response status: ${response.statusCode}');
+          print('Mobile response status: ${response.statusCode}');
           
           // Read the response
           final responseBody = await response.stream.bytesToString();
-          print('Android response received: ${responseBody.substring(0, min(100, responseBody.length))}...');
+          print('Mobile response received: ${responseBody.substring(0, min(100, responseBody.length))}...');
           
           // Process the response if context is still valid
           if (context.mounted) {
             // Handle the response
-            _handleAndroidResponse(response.statusCode, responseBody, context);
+            _handleApiResponse(response.statusCode, responseBody, context);
           }
         } catch (e) {
-          print('Android upload error: $e');
+          print('Mobile upload error: $e');
           
           // Try an alternative approach
           if (context.mounted) {
             try {
-              print('Trying alternative approach for Android...');
+              print('Trying alternative approach for mobile...');
               
               // Read image as bytes
               final bytes = await imageFile.readAsBytes();
@@ -142,7 +144,7 @@ class UploadService {
               // Process the response
               if (context.mounted) {
                 // Handle the response
-                _handleAndroidResponse(response.statusCode, response.body, context);
+                _handleApiResponse(response.statusCode, response.body, context);
               }
             } catch (altError) {
               print('Alternative approach also failed: $altError');
@@ -162,7 +164,7 @@ class UploadService {
                   headers: {'Content-Type': 'application/json'},
                   body: jsonEncode({
                     'image_data': base64Image,
-                    'filename': 'android_image.jpg',
+                    'filename': 'mobile_image.jpg',
                     'is_fallback': true,
                   }),
                 ).timeout(const Duration(seconds: 60));
@@ -172,7 +174,7 @@ class UploadService {
                 // Process the response
                 if (context.mounted) {
                   // Handle the response
-                  _handleAndroidResponse(response.statusCode, response.body, context);
+                  _handleApiResponse(response.statusCode, response.body, context);
                 }
               } catch (finalError) {
                 print('All approaches failed: $finalError');
@@ -180,122 +182,97 @@ class UploadService {
                 // Show error dialog
                 if (context.mounted) {
                   // Show error dialog
-                  _showAndroidErrorDialog(context, 'Failed to upload image after multiple attempts.');
+                  _showErrorDialog(context, 'Failed to upload image after multiple attempts.');
                 }
               }
             }
           }
         }
       } else {
-        // For web and iOS, use existing implementations
+        // For web, use existing implementations
         var uri = Uri.parse('http://65.1.134.235:3003');
         
-        if (kIsWeb) {
-          // Web-specific implementation
-          print('Using web-specific upload approach');
+        // Web-specific implementation
+        print('Using web-specific upload approach');
+        
+        try {
+          // Create a FormData-based request for web
+          final bytes = await imageFile.readAsBytes();
+          print('Image read as bytes: ${bytes.length} bytes');
           
+          // For web, try a simpler POST approach first
           try {
-            // Create a FormData-based request for web
-            final bytes = await imageFile.readAsBytes();
-            print('Image read as bytes: ${bytes.length} bytes');
+            // Create a boundary string for multipart form data
+            final boundary = '----WebKitFormBoundary${DateTime.now().millisecondsSinceEpoch}';
+            final headers = {
+              'Content-Type': 'multipart/form-data; boundary=$boundary',
+            };
             
-            // For web, try a simpler POST approach first
-            try {
-              // Create a boundary string for multipart form data
-              final boundary = '----WebKitFormBoundary${DateTime.now().millisecondsSinceEpoch}';
-              final headers = {
-                'Content-Type': 'multipart/form-data; boundary=$boundary',
-              };
-              
-              // Create the multipart request body manually
-              final requestBody = <int>[];
-              
-              // Add the file part header
-              requestBody.addAll(utf8.encode('--$boundary\r\n'));
-              requestBody.addAll(utf8.encode('Content-Disposition: form-data; name="file"; filename="image.jpg"\r\n'));
-              requestBody.addAll(utf8.encode('Content-Type: image/jpeg\r\n\r\n'));
-              
-              // Add the file data
-              requestBody.addAll(bytes);
-              requestBody.addAll(utf8.encode('\r\n'));
-              
-              // Add the closing boundary
-              requestBody.addAll(utf8.encode('--$boundary--\r\n'));
-              
-              // Send the request
-              print('Sending direct web request to ${uri.toString()}');
-              final response = await http.post(
-                uri,
-                headers: headers,
-                body: requestBody,
-              ).timeout(
-                const Duration(seconds: 45),
-                onTimeout: () => throw TimeoutException('Request timed out'),
-              );
-              
-              print('Response received with status: ${response.statusCode}');
-              print('Response body: ${response.body}');
-              
-              // Process response
-              _handleApiResponse(response.statusCode, response.body, context);
-              
-            } catch (directError) {
-              // If the direct approach fails, fall back to MultipartRequest
-              print('Direct web request failed: $directError');
-              print('Falling back to MultipartRequest approach');
-              
-              var request = http.MultipartRequest('POST', uri);
-              
-              request.files.add(
-                http.MultipartFile.fromBytes(
-                  'file',
-                  bytes,
-                  filename: 'image.jpg',
-                ),
-              );
-              
-              final streamedResponse = await request.send().timeout(
-                const Duration(seconds: 45),
-                onTimeout: () => throw TimeoutException('Request timed out'),
-              );
-              
-              print('Response received with status: ${streamedResponse.statusCode}');
-              final respStr = await streamedResponse.stream.bytesToString();
-              print('Response body: $respStr');
-              
-              // Process response
-              _handleApiResponse(streamedResponse.statusCode, respStr, context);
-            }
+            // Create the multipart request body manually
+            final requestBody = <int>[];
             
-          } catch (e) {
-            print('Web upload error: $e');
-            // For web, show a more specific error message
-            _showWebSpecificError(context, e);
-            throw e;
+            // Add the file part header
+            requestBody.addAll(utf8.encode('--$boundary\r\n'));
+            requestBody.addAll(utf8.encode('Content-Disposition: form-data; name="file"; filename="image.jpg"\r\n'));
+            requestBody.addAll(utf8.encode('Content-Type: image/jpeg\r\n\r\n'));
+            
+            // Add the file data
+            requestBody.addAll(bytes);
+            requestBody.addAll(utf8.encode('\r\n'));
+            
+            // Add the closing boundary
+            requestBody.addAll(utf8.encode('--$boundary--\r\n'));
+            
+            // Send the request
+            print('Sending direct web request to ${uri.toString()}');
+            final response = await http.post(
+              uri,
+              headers: headers,
+              body: requestBody,
+            ).timeout(
+              const Duration(seconds: 45),
+              onTimeout: () => throw TimeoutException('Request timed out'),
+            );
+            
+            print('Response received with status: ${response.statusCode}');
+            print('Response body: ${response.body}');
+            
+            // Process response
+            _handleApiResponse(response.statusCode, response.body, context);
+            
+          } catch (directError) {
+            // If the direct approach fails, fall back to MultipartRequest
+            print('Direct web request failed: $directError');
+            print('Falling back to MultipartRequest approach');
+            
+            var request = http.MultipartRequest('POST', uri);
+            
+            request.files.add(
+              http.MultipartFile.fromBytes(
+                'file',
+                bytes,
+                filename: 'image.jpg',
+              ),
+            );
+            
+            final streamedResponse = await request.send().timeout(
+              const Duration(seconds: 45),
+              onTimeout: () => throw TimeoutException('Request timed out'),
+            );
+            
+            print('Response received with status: ${streamedResponse.statusCode}');
+            final respStr = await streamedResponse.stream.bytesToString();
+            print('Response body: $respStr');
+            
+            // Process response
+            _handleApiResponse(streamedResponse.statusCode, respStr, context);
           }
-        } else {
-          // For iOS, use the original approach
-          print('Using iOS standard upload approach');
-          var request = http.MultipartRequest('POST', uri);
           
-          // Add file to request
-          request.files.add(await http.MultipartFile.fromPath(
-            'file', 
-            imageFile.path,
-          ));
-          
-          print('Sending iOS request to ${uri.toString()}');
-          final streamedResponse = await request.send().timeout(
-            const Duration(seconds: 30),
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
-          
-          print('Response received with status: ${streamedResponse.statusCode}');
-          final respStr = await streamedResponse.stream.bytesToString();
-          print('Response body: $respStr');
-          
-          // Process response
-          _handleApiResponse(streamedResponse.statusCode, respStr, context);
+        } catch (e) {
+          print('Web upload error: $e');
+          // For web, show a more specific error message
+          _showWebSpecificError(context, e);
+          throw e;
         }
       }
     } catch (e) {
@@ -312,17 +289,119 @@ class UploadService {
       
       // Show error message if context is valid
       if (context.mounted) {
-        if (Platform.isAndroid) {
-          _showAndroidErrorDialog(context, e.toString());
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Upload error: ${e.toString()}')),
-          );
-        }
+        _showErrorDialog(context, e.toString());
       }
     }
     
     print('======= UPLOAD PROCESS COMPLETED =======');
+  }
+  
+  /// Function specifically for uploading web images
+  static Future<void> uploadImageForWeb(List<int> imageBytes, String fileName, BuildContext context) async {
+    print('======= WEB UPLOAD PROCESS STARTED =======');
+    print('Web image size: ${imageBytes.length} bytes');
+    print('API endpoint being used: http://65.1.134.235:3003');
+    
+    // Check if we have a valid context
+    if (!context.mounted) {
+      print('Context is not mounted, cannot proceed with web upload');
+      return;
+    }
+    
+    try {
+      var uri = Uri.parse('http://65.1.134.235:3003');
+      print('Using web-specific upload approach');
+      
+      try {
+        // Create a boundary string for multipart form data
+        final boundary = '----WebKitFormBoundary${DateTime.now().millisecondsSinceEpoch}';
+        final headers = {
+          'Content-Type': 'multipart/form-data; boundary=$boundary',
+        };
+        
+        // Create the multipart request body manually
+        final requestBody = <int>[];
+        
+        // Add the file part header
+        requestBody.addAll(utf8.encode('--$boundary\r\n'));
+        requestBody.addAll(utf8.encode('Content-Disposition: form-data; name="file"; filename="$fileName"\r\n'));
+        requestBody.addAll(utf8.encode('Content-Type: image/jpeg\r\n\r\n'));
+        
+        // Add the file data
+        requestBody.addAll(imageBytes);
+        requestBody.addAll(utf8.encode('\r\n'));
+        
+        // Add the closing boundary
+        requestBody.addAll(utf8.encode('--$boundary--\r\n'));
+        
+        // Send the request
+        print('Sending direct web request to ${uri.toString()}');
+        final response = await http.post(
+          uri,
+          headers: headers,
+          body: requestBody,
+        ).timeout(
+          const Duration(seconds: 45),
+          onTimeout: () => throw TimeoutException('Request timed out'),
+        );
+        
+        print('Web response received with status: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        
+        // Process response
+        _handleApiResponse(response.statusCode, response.body, context);
+      } catch (webError) {
+        print('Web upload error: $webError');
+        
+        // Try fallback with base64 encoding
+        try {
+          print('Trying fallback with base64 encoding for web');
+          
+          // Convert image bytes to base64
+          final base64Image = base64Encode(imageBytes);
+          
+          // Create a JSON POST request
+          final uri = Uri.parse('http://65.1.134.235:3003');
+          final response = await http.post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'image_data': base64Image,
+              'filename': fileName,
+              'platform': 'web',
+            }),
+          ).timeout(const Duration(seconds: 45));
+          
+          print('Base64 web response: ${response.statusCode}');
+          
+          // Process the response
+          if (context.mounted) {
+            _handleApiResponse(response.statusCode, response.body, context);
+          }
+        } catch (fallbackError) {
+          print('All web upload approaches failed: $fallbackError');
+          _showWebSpecificError(context, fallbackError);
+        }
+      }
+    } catch (e) {
+      print('General web upload error: $e');
+      
+      // Close any loading dialogs
+      try {
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      } catch (dialogError) {
+        print('Error closing dialog: $dialogError');
+      }
+      
+      // Show error message
+      if (context.mounted) {
+        _showWebSpecificError(context, e);
+      }
+    }
+    
+    print('======= WEB UPLOAD PROCESS COMPLETED =======');
   }
   
   /// Helper function to show and hide loading dialog
@@ -340,167 +419,79 @@ class UploadService {
               children: [
                 const CircularProgressIndicator(
                   color: Colors.white,
-                  strokeWidth: 3,
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'Uploading...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'This may take a moment',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
+                  'Processing...',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             ),
           ),
         );
-      },
-    );
-    print('Loading dialog shown for upload');
-  }
-  
-  /// Helper function to hide loading dialog
-  static void hideLoadingDialog(BuildContext context) {
-    try {
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-        print('Loading dialog closed');
       }
-    } catch (e) {
-      print('Error hiding dialog: $e');
-    }
-  }
-  
-  /// Android-specific error dialog
-  static void _showAndroidErrorDialog(BuildContext context, String errorMessage) {
-    showDialog(
-      context: context,
-      builder: (BuildContext ctx) {
-        return AlertDialog(
-          title: const Text('Upload Failed'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Failed to upload the image. Please try again.'),
-              SizedBox(height: 10),
-              Text(
-                errorMessage.length > 150 ? '${errorMessage.substring(0, 150)}...' : errorMessage,
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
     );
   }
   
-  /// Android-specific response handler
-  static void _handleAndroidResponse(int statusCode, String responseBody, BuildContext context) {
-    print('Processing Android API response');
+  /// Process API response
+  static void _handleApiResponse(int statusCode, String responseStr, BuildContext context) {
+    print('Processing API response with status: $statusCode');
     
-    // Close loading dialog if open
+    // Close any loading dialogs
     try {
       if (Navigator.canPop(context)) {
-        Navigator.pop(context);
+        Navigator.of(context).pop();
+        print('Closed loading dialog');
       }
     } catch (e) {
-      print('Error closing Android dialog: $e');
+      print('Error closing dialog: $e');
     }
     
+    // Handle response based on status code
     if (statusCode == 200) {
+      print('Successful API response');
+      
       try {
-        // Parse JSON response
-        final data = json.decode(responseBody);
-        print('Android: Successfully parsed JSON');
+        // Parse the JSON response
+        final jsonResponse = json.decode(responseStr);
+        print('Parsed JSON response');
         
-        if (data.containsKey('result')) {
-          if (data['result'] is Map && 
-              data['result'].containsKey('success') && 
-              data['result']['success'] == false) {
-            // No ingredients found
-            _showNoIngredientsDialog(context);
-          } else {
-            // Success - navigate to results
-            final nutritionalData = NutritionalData.fromJson(data);
-            print('Navigating to results screen');
-            
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => NutritionalInsightsScreen(
-                  nutritionalData: nutritionalData,
-                  productName: 'Analyzed Product',
-                ),
-              ),
-            );
-          }
-        } else {
-          // Invalid response format
-          _showAndroidErrorDialog(context, 'Unexpected response format from server');
-        }
+        // Create a NutritionalData object from the response
+        NutritionalData nutritionalData = NutritionalData.fromJson(jsonResponse);
+        print('Created NutritionalData object');
+        
+        // Navigate to the NutritionalInsightsScreen with the data
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => NutritionalInsightsScreen(nutritionalData: nutritionalData),
+          ),
+        );
+        
+        print('Navigated to NutritionalInsightsScreen');
       } catch (e) {
-        print('Android response processing error: $e');
-        _showAndroidErrorDialog(context, 'Error processing server response: $e');
+        print('Error parsing response: $e');
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error processing server response: ${e.toString()}')),
+        );
       }
-    } else {
-      // Non-200 status code
-      _showAndroidErrorDialog(context, 'Server returned error code: $statusCode');
-    }
-  }
-  
-  /// Show no ingredients dialog
-  static void _showNoIngredientsDialog(BuildContext context) {
-    if (context.mounted) {
+    } else if (statusCode == 422) {
+      // Unprocessable Entity - likely image quality issue
+      print('Server could not process the image (422)');
+      
       showDialog(
         context: context,
         builder: (BuildContext ctx) {
           return AlertDialog(
-            title: Text('No Ingredients Found'),
-            content: Text('We could not identify any ingredients in this image. Please try again with a clearer image.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('OK'),
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-  
-  /// Show web-specific error message
-  static void _showWebSpecificError(BuildContext context, dynamic error) {
-    if (!context.mounted) return;
-    
-    // If this is a CORS error or network error, provide a helpful message
-    if (error.toString().contains('XMLHttpRequest') || 
-        error.toString().contains('network') || 
-        error.toString().contains('CORS')) {
-      showDialog(
-        context: context,
-        builder: (BuildContext ctx) {
-          return AlertDialog(
-            title: Text('Connection Issue', 
+            title: Text('Image Not Clear', 
               style: TextStyle(color: Theme.of(ctx).colorScheme.primary)),
             content: const Text(
-              'The app cannot connect to the image analysis server from a web browser due to security restrictions. '
-              'For the best experience, please use the mobile app.\n\n'
-              'If you need to use the web version, try uploading a smaller image.'
+              'The server could not process this image clearly. Please try:\n\n'
+              '• Taking a clearer photo\n'
+              '• Better lighting\n'
+              '• Different angle\n'
+              '• Using a different image'
             ),
             actions: [
               TextButton(
@@ -511,84 +502,100 @@ class UploadService {
           );
         }
       );
-    } else if (context.mounted) {
+    } else {
+      // Handle other status codes
+      print('Unexpected status code: $statusCode');
+      
+      String errorMessage = 'Server error (Code: $statusCode). Please try again later.';
+      if (statusCode == 413) {
+        errorMessage = 'Image is too large. Please try a smaller image.';
+      } else if (statusCode >= 500) {
+        errorMessage = 'Server error. Our team has been notified. Please try again later.';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error uploading: ${error.toString()}')),
+        SnackBar(content: Text(errorMessage)),
       );
     }
   }
   
-  /// Helper method to handle API response for iOS and Web
-  static void _handleApiResponse(int statusCode, String responseBody, BuildContext context) {
-    print('Processing API response. Status code: $statusCode');
-    print('Response body sample: ${responseBody.length > 100 ? '${responseBody.substring(0, 100)}...' : responseBody}');
-    
-    // Close loading dialog if still open
-    try {
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      print('Error closing dialog: $e');
-    }
-    
-    if (statusCode == 200 && context.mounted) {
-      try {
-        // Parse the JSON response
-        final Map<String, dynamic> data = json.decode(responseBody);
-        print('Successfully parsed JSON response');
-        
-        // Check if the response indicates no ingredients found
-        if (data.containsKey('result') && 
-            data['result'] is Map && 
-            data['result'].containsKey('success') && 
-            data['result']['success'] == false) {
-          
-          print('API response indicates no ingredients found');
-          
-          // Show "No ingredients found" message
-          _showNoIngredientsDialog(context);
-        } else if (data.containsKey('result')) {
-          print('API response contains nutritional data');
-          
-          // Create nutritional data from response
-          final nutritionalData = NutritionalData.fromJson(data);
-          
-          // Navigate to the nutritional insights screen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => NutritionalInsightsScreen(
-                nutritionalData: nutritionalData,
-                productName: 'Analyzed Product', // We don't have a URL to extract name from
+  /// Show error dialog for Android
+  static void _showErrorDialog(BuildContext context, String errorMessage) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: Text('Upload Error', 
+            style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('There was an error uploading your image:'),
+              const SizedBox(height: 8),
+              Text(
+                errorMessage,
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 16),
+              const Text('Please try:'),
+              const SizedBox(height: 8),
+              const Text('• Checking your internet connection'),
+              const Text('• Using a smaller or clearer image'),
+              const Text('• Trying again in a few minutes'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('OK', style: TextStyle(color: Theme.of(ctx).colorScheme.primary)),
             ),
-          );
-        } else {
-          print('Unexpected API response format');
-          
-          // Handle unexpected response format
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Received unexpected response format')),
-            );
-          }
-        }
-      } catch (e) {
-        print('Error processing response: $e');
-        
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error processing response: ${e.toString()}')),
-          );
-        }
-      }
-    } else if (context.mounted) {
-      print('API request failed with status code: $statusCode');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Upload failed with status: $statusCode')),
-      );
-    }
+          ],
+        );
+      },
+    );
+  }
+  
+  /// Show web-specific error dialog
+  static void _showWebSpecificError(BuildContext context, dynamic error) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: Text('Web Upload Error', 
+            style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('There was an error uploading your image in the web version:'),
+              const SizedBox(height: 8),
+              Text(
+                error.toString(),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text('Web limitations:'),
+              const SizedBox(height: 8),
+              const Text('• Browsers have stricter security policies'),
+              const Text('• Some operations may not be fully supported'),
+              const Text('• Consider using the mobile app for full features'),
+              const SizedBox(height: 16),
+              const Text('You can try:'),
+              const SizedBox(height: 8),
+              const Text('• Using a smaller image'),
+              const Text('• Using a different file format (jpg/png)'),
+              const Text('• Using a different browser'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('OK', style: TextStyle(color: Theme.of(ctx).colorScheme.primary)),
+            ),
+          ],
+        );
+      },
+    );
   }
 } 
