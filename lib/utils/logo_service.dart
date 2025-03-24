@@ -40,12 +40,12 @@ class LogoService {
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
           'assets/images/swiggy_instamart_logo.png',
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
             // If the standard logo fails, try the new one
             return Image.asset(
               'assets/images/swiggy.jpg',
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 // If both fail, show an error placeholder
                 return Container(
@@ -81,12 +81,12 @@ class LogoService {
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
           'assets/images/blinkit_logo.png',
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
             // If the standard logo fails, try the new one
             return Image.asset(
               'assets/images/blinkit.png',
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 // If both fail, show an error placeholder
                 return Container(
@@ -122,12 +122,12 @@ class LogoService {
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
           'assets/images/zepto_logo.png',
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
             // If the standard logo fails, try the new one
             return Image.asset(
               'assets/images/zepto.png',
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 // If both fail, show an error placeholder
                 return Container(

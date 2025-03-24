@@ -23,18 +23,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String? _errorMessage;
   late AnimationController _animationController;
   late Animation<double> _opacityAnimation;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    
+    _opacityAnimation = Tween<double>(begin: 1.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: const Interval(0.0, 0.5, curve: Curves.easeIn)),
     );
-    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    _animationController.forward();
   }
 
   @override
@@ -101,115 +106,136 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
     return Scaffold(
       appBar: AppBar(
-        title: LogoService.buildEatSafeLogo(context),
+        title: Center(
+          child: LogoService.buildEatSafeLogo(context),
+        ),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => MyApp.captureAndUploadImage(context),
-        tooltip: 'Capture Image',
-        child: const Icon(Icons.camera_alt),
+      floatingActionButton: AnimatedBuilder(
+        animation: _animationController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _pulseAnimation.value,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: FloatingActionButton(
+                onPressed: () => MyApp.captureAndUploadImage(context),
+                tooltip: 'Capture Image',
+                elevation: 8, // Increased elevation for more depth
+                child: const Icon(Icons.camera_alt),
+              ),
+            ),
+          );
+        },
       ),
       body: Stack(
         children: [
-          FadeTransition(
-            opacity: _opacityAnimation,
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // App Logo or Title
-                    Text(
-                      'Discover Nutritional Insights',
-                      style: theme.textTheme.displayMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Info text
-                    Text(
-                      'Enter a product URL from the supported stores to get detailed nutritional analysis',
-                      style: theme.textTheme.bodyLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Search Bar
-                    TextField(
-                      controller: _urlController,
-                      decoration: InputDecoration(
-                        hintText: 'Enter Product URL',
-                        hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
-                        filled: true,
-                        fillColor: theme.colorScheme.surface,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: theme.colorScheme.primary),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(Icons.search, color: theme.colorScheme.primary),
-                          onPressed: _isLoading ? null : _fetchNutritionalData,
-                        ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Logo or Title
+                  Text(
+                    'Discover Nutritional Insights',
+                    style: theme.textTheme.displayMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  
+                  // Info text
+                  Text(
+                    'Enter a product URL from the supported stores to get detailed nutritional analysis',
+                    style: theme.textTheme.bodyLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  
+                  // Search Bar
+                  TextField(
+                    controller: _urlController,
+                    decoration: InputDecoration(
+                      hintText: 'Enter Product URL',
+                      hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
+                      filled: true,
+                      fillColor: theme.colorScheme.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: theme.colorScheme.primary),
                       ),
-                      onSubmitted: (_) => _isLoading ? null : _fetchNutritionalData(),
-                      style: theme.textTheme.bodyLarge,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.search, color: theme.colorScheme.primary),
+                        onPressed: _isLoading ? null : _fetchNutritionalData,
+                      ),
                     ),
-                    
-                    // Error message
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: _errorMessage != null ? 40 : 0,
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: _errorMessage != null
-                        ? Text(
-                            _errorMessage!,
-                            style: TextStyle(color: theme.colorScheme.secondary),
-                            textAlign: TextAlign.center,
-                          )
-                        : const SizedBox(),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Supported Platforms Text
-                    Text(
-                      'Supported Platforms',
-                      style: theme.textTheme.headlineMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Brand Logos
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Swiggy Instamart Logo
-                        _buildBrandLogoWidget('Swiggy\nInstamart', 'swiggy'),
-                        
-                        // Blinkit Logo
-                        _buildBrandLogoWidget('Blinkit', 'blinkit'),
-                        
-                        // Zepto Logo
-                        _buildBrandLogoWidget('Zepto', 'zepto'),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 48),
-                  ],
-                ),
+                    onSubmitted: (_) => _isLoading ? null : _fetchNutritionalData(),
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                  
+                  // Error message
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    height: _errorMessage != null ? 40 : 0,
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: _errorMessage != null
+                      ? Text(
+                          _errorMessage!,
+                          style: TextStyle(color: theme.colorScheme.secondary),
+                          textAlign: TextAlign.center,
+                        )
+                      : const SizedBox(),
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  
+                  // Supported Platforms Text
+                  Text(
+                    'Supported Platforms',
+                    style: theme.textTheme.headlineMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Brand Logos
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // Swiggy Instamart Logo
+                      _buildBrandLogoWidget('Swiggy\nInstamart', 'swiggy'),
+                      
+                      // Blinkit Logo
+                      _buildBrandLogoWidget('Blinkit', 'blinkit'),
+                      
+                      // Zepto Logo
+                      _buildBrandLogoWidget('Zepto', 'zepto'),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 48),
+                ],
               ),
             ),
           ),
